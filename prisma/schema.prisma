@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  firstName    String?   @map("first_name")
+  lastName     String?   @map("last_name")
+  firm         String?
+  specialty    String?
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  folders       Folder[]
+  conversations Conversation[]
+  clients       Client[]
+  cases         Case[]
+  documents     Document[]
+}
+
+model Folder {
+  id        Int          @id @default(autoincrement())
+  userId    Int          @map("user_id")
+  name      String
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user      User         @relation(fields: [userId], references: [id])
+  items     FolderItem[]
+}
+
+model Conversation {
+  id        Int          @id @default(autoincrement())
+  userId    Int          @map("user_id")
+  caseId    Int?         @map("case_id")
+  title     String?
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id])
+  messages    Message[]
+  folderItems FolderItem[]  // <-- côté opposé à FolderItem.conversation
+}
+
+model FolderItem {
+  id             Int           @id @default(autoincrement())
+  folderId       Int           @map("folder_id")
+  conversationId Int?          @map("conversation_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  folder       Folder       @relation(fields: [folderId], references: [id])
+  conversation Conversation? @relation(fields: [conversationId], references: [id]) // <-- optionnel
+}
+
+model Client {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @map("user_id")
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [id])
+  cases     Case[]
+  documents Document[]   // <-- côté opposé à Document.client
+}
+
+model Case {
+  id          Int        @id @default(autoincrement())
+  userId      Int        @map("user_id")
+  clientId    Int        @map("client_id")
+  title       String
+  description String?
+  status      String     @default("open")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  client    Client    @relation(fields: [clientId], references: [id])
+  documents Document[]
+}
+
+model Document {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  caseId     Int?      @map("case_id")
+  clientId   Int?      @map("client_id")
+  filename   String
+  mime       String?
+  path       String
+  textLength Int?      @map("text_length")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id])
+  case   Case?   @relation(fields: [caseId], references: [id])
+  client Client? @relation(fields: [clientId], references: [id])
+}
+
+model Message {
+  id             Int      @id @default(autoincrement())
+  conversationId Int      @map("conversation_id")
+  role           String
+  content        String    @db.LongText
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+}

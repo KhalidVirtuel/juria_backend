@@ -1,0 +1,15 @@
+# Fichiers de base de données
+mysql_data/
+
+# Fichiers d'environnement avec secrets
+.env
+
+# Dépendances (selon votre langage)
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+
+# Fichiers système
+.DS_Store
+Thumbs.db

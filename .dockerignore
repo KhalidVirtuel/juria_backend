@@ -1,0 +1,18 @@
+@"
+# Dépendances & artefacts
+node_modules
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# Env & VCS
+.env
+.env.*
+.git
+.gitignore
+
+# Données runtime à exclure du build context
+mysql_data
+qdrant_storage
+data
+"@ | Set-Content -Encoding utf8 ".dockerignore"
