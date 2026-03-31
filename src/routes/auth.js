@@ -1,80 +1,183 @@
 // src/routes/auth.js
 import express from 'express';
-import bcrypt from 'bcryptjs';
-import { prisma } from '../services/db.js';
-import { cfg } from '../config.js';
+import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs'; // npm i bcryptjs
+import nodemailer from 'nodemailer';
+import { cfg } from '../config.js';
+import { authRequired } from '../middleware/auth.js';
 
 export const authRouter = express.Router();
+const prisma = new PrismaClient();
 
-function signToken(user) {
-  // standardise le payload sur "id" (pas "uid")
-  return jwt.sign(
-    { id: user.id, email: user.email },
-    cfg.jwtSecret,
-    { expiresIn: '7d' }
-  );
+// --- helper: map DB -> DTO attendu par le front
+function toUserDTO(u) {
+  return {
+    id: String(u.id),
+    email: u.email,
+    firstName: u.firstName || '',
+    lastName: u.lastName || '',
+    lawFirm: u.firm || '',
+    legalSpecialty: u.specialty || '',
+    createdAt: (u.createdAt ?? new Date()).toISOString(),
+    // Ton schéma n'a pas updatedAt -> on renvoie createdAt pour rester compatible front
+    updatedAt: (u.createdAt ?? new Date()).toISOString(),
+  };
 }
+
 
 authRouter.post('/register', async (req, res, next) => {
   try {
-    const { first_name, last_name, email, password, firm, specialty } = req.body;
+    const { firstName, lastName, email, password, lawFirm, legalSpecialty } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'email & password required' });
 
     const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) return res.status(409).json({ error: 'Email already registered' });
+    if (exists) return res.status(409).json({ error: 'Email already exists' });
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const u = await prisma.user.create({
       data: {
-        firstName: first_name || null,
-        lastName:  last_name  || null,
-        firm:      firm       || null,
-        specialty: specialty  || null,
         email,
         passwordHash,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        firm: lawFirm || null,
+        specialty: legalSpecialty || null,
+        // nouvelle préférence par défaut
+        // locale: 'fr',  <-- seulement si tu ajoutes ce champ dans Prisma (optionnel, voir plus bas)
       },
+      select: { id: true, email: true, firstName: true, lastName: true, firm: true, specialty: true, createdAt: true },
     });
 
-    const token = signToken(user);
-    res.json({ token });
-  } catch (err) {
-    next(err);
-  }
+    const token = jwt.sign({ uid: u.id, email: u.email }, cfg.jwtSecret, { expiresIn: '7d' });
+    return res.json({ message: 'Registered successfully', token, user: toUserDTO(u) });
+  } catch (e) { next(e); }
 });
 
 authRouter.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+    const u = await prisma.user.findUnique({ where: { email } });
+    if (!u) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const ok = await bcrypt.compare(String(password || ''), u.passwordHash || '');
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = signToken(user);
-    res.json({ token });
-  } catch (err) {
-    next(err);
-  }
+    const token = jwt.sign({ uid: u.id, email: u.email }, cfg.jwtSecret, { expiresIn: '7d' });
+    const slim = await prisma.user.findUnique({
+      where: { id: u.id },
+      select: { id: true, email: true, firstName: true, lastName: true, firm: true, specialty: true, createdAt: true },
+    });
+    return res.json({ token, user: toUserDTO(slim) });
+  } catch (e) { next(e); }
+});
+
+
+authRouter.get('/profile', authRequired, async (req, res, next) => {
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: req.user.uid },
+      select: { id: true, email: true, firstName: true, lastName: true, firm: true, specialty: true, createdAt: true },
+    });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    return res.json({ user: toUserDTO(u) });
+  } catch (e) { next(e); }
+});
+
+authRouter.put('/profile', authRequired, async (req, res, next) => {
+  try {
+    const { firstName, lastName, lawFirm, legalSpecialty } = req.body || {};
+    const u = await prisma.user.update({
+      where: { id: req.user.uid },
+      data: {
+        firstName: firstName ?? undefined,
+        lastName:  lastName ?? undefined,
+        firm:      lawFirm ?? undefined,
+        specialty: legalSpecialty ?? undefined,
+      },
+      select: { id: true, email: true, firstName: true, lastName: true, firm: true, specialty: true, createdAt: true },
+    });
+    return res.json({ user: toUserDTO(u) });
+  } catch (e) { next(e); }
 });
 
 
 
-export function authMiddleware(req, res, next) {
-  const auth = req.headers.authorization || '';
-  if (!auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token' });
-  }
-  const token = auth.slice(7);
+authRouter.get('/preferences', authRequired, async (req, res, next) => {
   try {
-    const payload = jwt.verify(token, cfg.jwtSecret);
-    // payload attendu: { id, email, iat, exp }
-    req.user = payload;
-    return next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-}
+    const u = await prisma.user.findUnique({
+      where: { id: req.user.uid },
+      select: { /* si ajouté */ locale: true },
+    });
+    return res.json({
+      preferences: {
+        language: u?.locale || 'fr', // défaut
+      }
+    });
+  } catch (e) { next(e); }
+});
 
-export const authRequired = authMiddleware;
+authRouter.put('/preferences', authRequired, async (req, res, next) => {
+  try {
+    const { language } = req.body || {};
+    // si tu as ajouté `locale` dans Prisma:
+    const u = await prisma.user.update({
+      where: { id: req.user.uid },
+      data: { locale: language ?? undefined },
+      select: { /* si ajouté */ locale: true },
+    });
+    return res.json({ preferences: { language: u?.locale || language || 'fr' }});
+  } catch (e) { next(e); }
+});
+
+
+
+authRouter.post('/waitlist', async (req, res, next) => {
+  try {
+    const { first_name, last_name, email } = req.body || {};
+    if (!first_name || !last_name || !email) {
+      return res.status(400).json({ message: 'first_name, last_name and email are required' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: 'khalid.serdani@gmail.com',
+      subject: 'Nouvelle inscription liste d\'attente – Juria',
+      text: `Nouvelle inscription :\n\nPrénom : ${first_name}\nNom : ${last_name}\nEmail : ${email}`,
+      html: `<h2>Nouvelle inscription liste d'attente</h2>
+             <p><strong>Prénom :</strong> ${first_name}</p>
+             <p><strong>Nom :</strong> ${last_name}</p>
+             <p><strong>Email :</strong> ${email}</p>`,
+    });
+
+    return res.json({ message: 'Inscription enregistrée. Merci !' });
+  } catch (e) { next(e); }
+});
+
+authRouter.put('/password', authRequired, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!newPassword) return res.status(400).json({ error: 'newPassword required' });
+
+    const u = await prisma.user.findUnique({ where: { id: req.user.uid } });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+
+    if (u.passwordHash) {
+      const ok = await bcrypt.compare(String(currentPassword || ''), u.passwordHash);
+      if (!ok) return res.status(401).json({ error: 'Invalid current password' });
+    }
+    const passwordHash = await bcrypt.hash(String(newPassword), 10);
+    await prisma.user.update({ where: { id: u.id }, data: { passwordHash } });
+    return res.json({ message: 'Password updated' });
+  } catch (e) { next(e); }
+});

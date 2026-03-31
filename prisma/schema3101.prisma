@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int                         @id @default(autoincrement())
+  email            String                      @unique
+  passwordHash     String
+  firstName        String?
+  lastName         String?
+  firm             String?
+  specialty        String?
+  createdAt        DateTime                    @default(now())
+  locale           String?
+  cases            Case[]
+  clients          Client[]
+  conversations    Conversation[]
+  documents        Document[]
+  folders          Folder[]
+  genDocs          GenDoc[]
+  messages         Message[]
+  documentSessions DocumentGenerationSession[]
+}
+
+model Folder {
+  id               Int                         @id @default(autoincrement())
+  userId           Int
+  name             String
+  description      String?
+  color            String?
+  createdAt        DateTime                    @default(now())
+  conversations    Conversation[]
+  deadlines        Deadline[]
+  documents        Document[]
+  user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genDocs          GenDoc[]
+  timeline         TimelineEvent[]
+  documentSessions DocumentGenerationSession[]
+
+  @@index([userId], map: "Folder_userId_fkey")
+}
+
+model Conversation {
+  id               Int                         @id @default(autoincrement())
+  userId           Int
+  title            String
+  folderId         Int?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  folder           Folder?                     @relation(fields: [folderId], references: [id])
+  user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genDocs          GenDoc[]
+  messages         Message[]
+  timelineEvents   TimelineEvent[]
+  documentSessions DocumentGenerationSession[]
+
+  @@index([folderId], map: "Conversation_folderId_fkey")
+  @@index([userId], map: "Conversation_userId_fkey")
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  userId         Int
+  role           MessageRole
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], map: "Message_conversationId_fkey")
+  @@index([userId], map: "Message_userId_fkey")
+}
+
+model Client {
+  id        Int        @id @default(autoincrement())
+  userId    Int
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime   @default(now())
+  cases     Case[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([userId], map: "Client_userId_fkey")
+}
+
+model Case {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  clientId    Int
+  title       String
+  description String?
+  status      String?
+  createdAt   DateTime   @default(now())
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents   Document[]
+
+  @@index([clientId], map: "Case_clientId_fkey")
+  @@index([userId], map: "Case_userId_fkey")
+}
+
+model Document {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  path      String
+  mimeType  String?
+  size      Int?
+  folderId  Int?
+  caseId    Int?
+  clientId  Int?
+  createdAt DateTime @default(now())
+  kind      String?
+  case      Case?    @relation(fields: [caseId], references: [id])
+  client    Client?  @relation(fields: [clientId], references: [id])
+  folder    Folder?  @relation(fields: [folderId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([caseId], map: "Document_caseId_fkey")
+  @@index([clientId], map: "Document_clientId_fkey")
+  @@index([folderId], map: "Document_folderId_fkey")
+  @@index([userId], map: "Document_userId_fkey")
+}
+
+model Deadline {
+  id        Int      @id @default(autoincrement())
+  folderId  Int
+  title     String
+  dueDate   DateTime
+  note      String?
+  createdAt DateTime @default(now())
+  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+}
+
+model TimelineEvent {
+  id             Int               @id @default(autoincrement())
+  folderId       Int
+  conversationId Int?
+  label          String
+  date           DateTime
+  note           String?           @db.MediumText
+  createdAt      DateTime          @default(now())
+  type           TimelineEventType @default(EVENT)
+  Conversation   Conversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  folder         Folder            @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+  @@index([conversationId])
+}
+
+model GenDoc {
+  id             Int           @id @default(autoincrement())
+  userId         Int
+  folderId       Int
+  conversationId Int?
+  title          String
+  type           GenDocType
+  content        String        @db.LongText
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  folder         Folder        @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+  @@index([conversationId])
+  @@index([userId], map: "GenDoc_userId_fkey")
+}
+
+model DocumentGenerationSession {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  userId         Int
+  folderId       Int?
+  documentType   String       @db.VarChar(50)
+  collectedData  Json?
+  requiredFields Json?
+  status         String       @default("collecting") @db.VarChar(20)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  folder         Folder?      @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([status])
+  @@index([folderId], map: "document_generation_sessions_folderId_fkey")
+  @@map("document_generation_sessions")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum GenDocType {
+  CONTRACT
+  CONCLUSION
+  NOTE
+  LETTER
+  REPORT
+}
+
+enum TimelineEventType {
+  FACT
+  PROCEDURE
+  HEARING
+  DEADLINE
+  EVENT
+}

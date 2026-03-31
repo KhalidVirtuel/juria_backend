@@ -1,10 +1,16 @@
 import { PrismaClient } from '@prisma/client';
+
 export const prisma = new PrismaClient();
-async function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
-export async function connectWithRetry(retries=30, delay=1500){
+
+export async function connectWithRetry(retries = 15, delayMs = 1000){
   for(let i=1;i<=retries;i++){
-    try{ await prisma.$queryRaw`SELECT 1`; console.log(`[DB] Connected (attempt ${i})`); return prisma; }
-    catch(e){ console.log(`[DB] Not ready (attempt ${i}) -> retry in ${delay}ms`); await wait(delay); }
+    try{
+      await prisma.$connect();
+      console.log(`[DB] Connected (attempt ${i})`);
+      return;
+    }catch(e){
+      if(i===retries) throw e;
+      await new Promise(r=>setTimeout(r, delayMs));
+    }
   }
-  throw new Error('MySQL not reachable via Prisma');
 }

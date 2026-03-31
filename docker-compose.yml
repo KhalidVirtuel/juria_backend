@@ -1,75 +1,71 @@
 services:
   mysql:
-    image: mysql:8.4
+    image: mysql:8.0
     container_name: juria-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: jur3pass
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: jure_ai
-      MYSQL_USER: jure
-      MYSQL_PASSWORD: jur3pass
-    ports: ["3306:3306"]
+    ports:
+      - "3307:3306"
     volumes:
-      - ./mysql_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -pjur3pass || exit 1"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.5
+    container_name: juria-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"     # HTTP
+      - "6334:6334"     # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    # ✅ Healthcheck qui marche même si curl OU wget manque
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c '(command -v curl >/dev/null 2>&1 && curl -fsS http://localhost:6333/healthz) || (command -v wget >/dev/null 2>&1 && wget -qO- http://localhost:6333/healthz) || exit 1'"]
       interval: 5s
       timeout: 3s
       retries: 30
-
-  qdrant:
-    image: qdrant/qdrant:v1.15.1
-    container_name: juria-qdrant
-    ports: ["6333:6333"]
-    volumes:
-      - ./qdrant_storage:/qdrant/storage
-
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
-    container_name: juria-phpmyadmin
-    environment:
-      PMA_HOST: mysql
-      PMA_USER: root
-      PMA_PASSWORD: jur3pass
-    ports: ["8088:80"]
-    depends_on:
-      mysql:
-        condition: service_healthy
+      start_period: 10s
 
   node:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: juria-node
-    working_dir: /app
-    # 🟢 On exécute le script d'entrée
-    entrypoint: [ "sh", "-c", "chmod +x ./docker/entrypoint.sh && ./docker/entrypoint.sh" ]
-    volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      NODE_ENV: development
-      PORT: 8787
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_USER: jure
-      MYSQL_PASSWORD: jur3pass
-      MYSQL_DATABASE: jure_ai
-      DATABASE_URL: mysql://root:jur3pass@mysql:3306/jure_ai
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: company_knowledge_fr
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      STT_LANGUAGE: ${STT_LANGUAGE}
-      WHISPER_MODEL: ${WHISPER_MODEL}
-      TTS_MODEL: ${TTS_MODEL}
-      TTS_VOICE: ${TTS_VOICE}
-      JWT_SECRET: ${JWT_SECRET}
-    ports: ["8787:8787"]
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
       qdrant:
         condition: service_started
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://root:root@mysql:3306/jure_ai
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./:/app
+      - ./uploads:/app/uploads
+
+  phpmyadmin:
+    image: phpmyadmin:5-apache
+    container_name: juria-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: root
+    ports:
+      - "8890:80"
 
 volumes:
   mysql_data:

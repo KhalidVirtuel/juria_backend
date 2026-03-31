@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "setup": "node src/scripts/setup.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
@@ -22,11 +23,14 @@
     "form-data": "^4.0.4",
     "groq-sdk": "^0.7.0",
     "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.11.0",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.2",
+    "nodemailer": "^8.0.2",
     "openai": "^4.60.0",
     "pdf-parse": "^1.1.1",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "prisma": "^5.20.0"

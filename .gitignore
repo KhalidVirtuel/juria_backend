@@ -1,6 +1,7 @@
 # Fichiers de base de données
 mysql_data/
-
+qdrant_storage/
+data/uploads/
 # Fichiers d'environnement avec secrets
 .env
 
@@ -13,3 +14,6 @@ __pycache__/
 # Fichiers système
 .DS_Store
 Thumbs.db
+
+
+
