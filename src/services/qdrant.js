@@ -9,15 +9,24 @@ const client = new QdrantClient({
   ...(cfg.qdrant?.apiKey ? { apiKey: cfg.qdrant.apiKey } : {}),
 });
 
-/** S’assure que la collection existe (sinon la crée). */
+/** S’assure que la collection existe (sinon la crée) et que l’index path existe. */
 export async function ensureCollection(name = cfg.qdrant.collection) {
+  let created = false;
   try {
     await client.getCollection(name);
   } catch {
     await client.createCollection(name, {
-      vectors: { size: cfg.embedding?.dimension || 1536, distance: 'Cosine' },
+      vectors: { size: cfg.embedding?.dimension || 1536, distance: ‘Cosine’ },
     });
+    created = true;
   }
+  // Crée l’index payload sur "path" si nécessaire
+  try {
+    await client.createPayloadIndex(name, {
+      field_name: ‘path’,
+      field_schema: ‘keyword’,
+    });
+  } catch (_) { /* index existe déjà */ }
 }
 
 /** Recherche des passages similaires à un vecteur de requête. */
