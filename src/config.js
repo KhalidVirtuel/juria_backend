@@ -11,6 +11,7 @@ export const cfg = {
   qdrant: {
     url: process.env.QDRANT_URL || "http://qdrant:6333",
     collection: process.env.QDRANT_COLLECTION || "company_knowledge_fr",
+    apiKey: process.env.QDRANT_API_KEY || "",
   },
   
   // Structure pour l'embedding

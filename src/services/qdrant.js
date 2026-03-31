@@ -6,6 +6,7 @@ console.log("cfg")
 console.log(cfg)
 const client = new QdrantClient({
   url: cfg.qdrant?.url || 'http://qdrant:6333',
+  ...(cfg.qdrant?.apiKey ? { apiKey: cfg.qdrant.apiKey } : {}),
 });
 
 /** S’assure que la collection existe (sinon la crée). */
