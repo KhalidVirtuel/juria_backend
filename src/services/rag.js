@@ -26,9 +26,11 @@ async function scrollSearchForArticle(articleNum, docFilter = null) {
       if (docFilter) {
         body.filter = { must: [{ key: 'path', match: { value: docFilter } }] };
       }
+      const scrollHeaders = { 'Content-Type': 'application/json' };
+      if (cfg.qdrant?.apiKey) scrollHeaders['api-key'] = cfg.qdrant.apiKey;
       const resp = await fetch(`${qdrantUrl}/collections/${collection}/points/scroll`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: scrollHeaders,
         body: JSON.stringify(body),
       });
       if (!resp.ok) break;

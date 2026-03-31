@@ -64,10 +64,12 @@ function listFilesRecursive(rootDir) {
 
 // Petite enveloppe POST pour Qdrant
 async function qdrantPost(urlPath, body) {
-  const base = cfg.qdrantUrl.replace(/\/$/, '');
+  const base = (cfg.qdrant?.url || cfg.qdrantUrl || 'http://qdrant:6333').replace(/\/$/, '');
+  const headers = { 'content-type': 'application/json' };
+  if (cfg.qdrant?.apiKey) headers['api-key'] = cfg.qdrant.apiKey;
   const res = await fetch(`${base}${urlPath}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
